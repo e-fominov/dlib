@@ -22,6 +22,7 @@
 #include <future>
 #include <exception>
 #include <mutex>
+#include "../dir_nav.h"
 
 namespace dlib
 {
@@ -409,7 +410,7 @@ namespace dlib
             time_between_syncs = time_between_syncs_;
 
             // check if the sync file already exists, if it does we should load it.
-            std::ifstream fin(sync_filename, std::ios::binary);
+            std::ifstream fin(newest_syncfile(), std::ios::binary);
             if (fin)
                 deserialize(*this, fin);
         }
@@ -713,7 +714,7 @@ namespace dlib
                     // We can't do this outside the loop because the tensors that get
                     // averaged need to be allocated to their devices before we call set()
                     // so that the averagers can determine how best to average them.
-                    if (averagers.size() == 0)
+                    if (averagers.size() == 0 || sync_file_reloaded)
                     {
                         averagers = std::vector<tt::multi_device_tensor_averager>(net_type::num_computational_layers);
                         // setup the averagers to point to the tensors in the networks.
@@ -736,6 +737,8 @@ namespace dlib
                             if (temp[0]->size() != 0)
                                 averagers[i].set(temp);
                         }
+
+                        sync_file_reloaded = false;
                     }
 
 
@@ -855,6 +858,7 @@ namespace dlib
             prob_loss_increasing_thresh_max_value = 0.99999;
             prob_loss_increasing_thresh = prob_loss_increasing_thresh_default_value;
             updated_net_since_last_sync = false;
+            sync_file_reloaded = false;
             start();
         }
 
@@ -977,25 +981,20 @@ namespace dlib
                 // previously saved state in the hopes that the problem won't reoccur.
                 if (loss_increased_since_last_disk_sync()) 
                 {
-                    std::ifstream fin(sync_filename, std::ios::binary);
+                    std::ifstream fin(newest_syncfile(), std::ios::binary);
                     deserialize(*this, fin);
+                    sync_file_reloaded = true;
                     if (verbose)
-                        std::cout << "Loss has been increasing, reloading saved state from " << sync_filename << std::endl;
+                        std::cout << "Loss has been increasing, reloading saved state from " << newest_syncfile() << std::endl;
                 }
                 else
                 {
 
-                    // save our state to a temp file
-                    const std::string tempfile = sync_filename + ".tmp";
-                    serialize(tempfile) << *this;
-
-                    // Now that we know the state is safely saved to disk, delete the old sync
-                    // file and move the .tmp file to it.
-                    std::remove(sync_filename.c_str());
-                    std::rename(tempfile.c_str(), sync_filename.c_str());
+                    const std::string filename = oldest_syncfile();
+                    serialize(filename) << *this;
 
                     if (verbose)
-                        std::cout << "Saved state to " << sync_filename << std::endl;
+                        std::cout << "Saved state to " << filename << std::endl;
                 }
 
                 last_sync_time = std::chrono::system_clock::now();
@@ -1004,12 +1003,24 @@ namespace dlib
             }
         }
 
+        std::string newest_syncfile (
+        )
+        {
+            return select_newest_file(sync_filename, sync_filename + "_");
+        }
+
+        std::string oldest_syncfile (
+        )
+        {
+            return select_oldest_file(sync_filename, sync_filename + "_");
+        }
+
         bool loss_increased_since_last_disk_sync() 
         {
             size_t gradient_updates_since_last_sync = main_iteration_counter - main_iteration_counter_at_last_disk_sync;
 
             // if we haven't synced anything to disk yet then return false.
-            if (!std::ifstream(sync_filename, std::ios::binary))
+            if (!std::ifstream(newest_syncfile(), std::ios::binary))
                 return false;
 
             for (auto x : previous_loss_values)
@@ -1230,6 +1241,7 @@ namespace dlib
         double prob_loss_increasing_thresh;
         std::atomic<bool> updated_net_since_last_sync;
 
+        bool sync_file_reloaded;
     };
 
 // ----------------------------------------------------------------------------------------

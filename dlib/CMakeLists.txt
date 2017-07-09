@@ -181,6 +181,9 @@ if (NOT TARGET dlib)
    )
 
 
+   set(dlib_needed_libraries)
+   set(dlib_needed_includes)
+
    if (DLIB_ISO_CPP_ONLY)
        add_library(dlib STATIC ${source_files} )
        if (UNIX AND NOT DLIB_IN_PROJECT_BUILD)
@@ -219,8 +222,6 @@ if (NOT TARGET dlib)
          stack_trace.cpp
          )
 
-      set(dlib_needed_libraries)
-      set(dlib_needed_includes)
       if(UNIX)
          set(CMAKE_THREAD_PREFER_PTHREAD ON)
          find_package(Threads REQUIRED)
@@ -384,7 +385,10 @@ if (NOT TARGET dlib)
                external/zlib/uncompr.c
                external/zlib/zutil.c
                )
-            if (NEON)
+
+            include(cmake_utils/check_if_neon_available.cmake)
+            if (ARM_NEON_IS_AVAILABLE)
+               message (STATUS "NEON instructions will be used for libpng.")
                enable_language(ASM)
                set(source_files ${source_files}
                   external/libpng/arm/arm_init.c
@@ -599,7 +603,7 @@ if (NOT TARGET dlib)
             endif()
          endif()
 
-         if (CUDA_FOUND AND cudnn AND cudnn_include AND COMPILER_CAN_DO_CPP_11 AND cuda_test_compile_worked AND cudnn_test_compile_worked)
+         if (CUDA_FOUND AND cudnn AND COMPILER_CAN_DO_CPP_11 AND cuda_test_compile_worked AND cudnn_test_compile_worked AND cudnn_include)
             set(source_files ${source_files} 
                dnn/cuda_dlib.cu 
                dnn/cudnn_dlibapi.cpp
@@ -673,17 +677,6 @@ if (NOT TARGET dlib)
       else()
          add_library(dlib STATIC ${source_files} )
       endif()
-      target_include_directories(dlib
-                                 INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
-                                 INTERFACE $<INSTALL_INTERFACE:include>
-                                 PUBLIC ${dlib_needed_includes}
-                                 )
-      target_link_libraries(dlib PRIVATE ${dlib_needed_libraries})
-      if (DLIB_IN_PROJECT_BUILD)
-         target_compile_options(dlib PUBLIC ${active_preprocessor_switches})
-      else()
-         target_compile_options(dlib PRIVATE ${active_preprocessor_switches})
-      endif()
       if (UNIX AND NOT DLIB_IN_PROJECT_BUILD)
          if (DLIB_USE_CUDA)
             cuda_add_library(dlib_shared SHARED ${source_files} )
@@ -692,16 +685,32 @@ if (NOT TARGET dlib)
             add_library(dlib_shared SHARED ${source_files} )
             add_dependencies(dlib_shared dlib)
          endif()
-         target_include_directories(dlib_shared
-                                    INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
-                                    INTERFACE $<INSTALL_INTERFACE:include>
-                                    PUBLIC ${dlib_needed_includes}
-                                    )
-         target_link_libraries(dlib_shared PRIVATE ${dlib_needed_libraries})
-         target_compile_options(dlib_shared PRIVATE ${active_preprocessor_switches})
       endif()
 
    endif ()  ##### end of if NOT DLIB_ISO_CPP_ONLY ##########################################################
+
+
+   target_include_directories(dlib
+                              INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+                              INTERFACE $<INSTALL_INTERFACE:include>
+                              PUBLIC ${dlib_needed_includes}
+                              )
+   target_link_libraries(dlib PRIVATE ${dlib_needed_libraries})
+   if (DLIB_IN_PROJECT_BUILD)
+      target_compile_options(dlib PUBLIC ${active_preprocessor_switches})
+   else()
+      target_compile_options(dlib PRIVATE ${active_preprocessor_switches})
+   endif()
+   if (UNIX AND NOT DLIB_IN_PROJECT_BUILD)
+      target_include_directories(dlib_shared
+                                 INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+                                 INTERFACE $<INSTALL_INTERFACE:include>
+                                 PUBLIC ${dlib_needed_includes}
+                                 )
+      target_link_libraries(dlib_shared PRIVATE ${dlib_needed_libraries})
+      target_compile_options(dlib_shared PRIVATE ${active_preprocessor_switches})
+   endif()
+
 
    # Allow the unit tests to ask us to compile the all/source.cpp file just to make sure it compiles.
    if (DLIB_TEST_COMPILE_ALL_SOURCE_CPP)
