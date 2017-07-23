@@ -1753,14 +1753,16 @@ namespace dlib
             long stride_y,
             long stride_x,
             long padding_y,
-            long padding_x
+            long padding_x,
+            long dilation_y,
+            long dilation_x
         )
         {
             const auto d = data.host() + data.k()*data.nr()*data.nc()*n;
             const rectangle boundary = get_rect(data);
 
-            const long out_nr = 1+(data.nr()+2*padding_y-filter_nr)/stride_y;
-            const long out_nc = 1+(data.nc()+2*padding_x-filter_nc)/stride_x;
+            const long out_nr = 1+(data.nr()+2*padding_y-dilation_y*(filter_nr-1)-1)/stride_y;
+            const long out_nc = 1+(data.nc()+2*padding_x-dilation_x*(filter_nc-1)-1)/stride_x;
 
             output.set_size(out_nr*out_nc, 
                             data.k()*filter_nr*filter_nc);
@@ -1769,8 +1771,8 @@ namespace dlib
 
             // now fill in the Toeplitz output matrix for the n-th sample in data.  
             size_t cnt = 0;
-            const long max_r = data.nr() + padding_y-(filter_nr-1);
-            const long max_c = data.nc() + padding_x-(filter_nc-1);
+            const long max_r = data.nr() + padding_y-dilation_y*(filter_nr-1);
+            const long max_c = data.nc() + padding_x-dilation_x*(filter_nc-1);
             for (long r = -padding_y; r < max_r; r+=stride_y)
             {
                 for (long c = -padding_x; c < max_c; c+=stride_x)
@@ -1782,8 +1784,8 @@ namespace dlib
                             for (long x = 0; x < filter_nc; ++x)
                             {
                                 DLIB_ASSERT(cnt < output.size());
-                                long xx = c+x;
-                                long yy = r+y;
+                                long xx = c+x*dilation_x;
+                                long yy = r+y*dilation_y;
                                 if (boundary.contains(xx,yy))
                                     *t = d[(k*data.nr() + yy)*data.nc() + xx];
                                 else
@@ -1806,7 +1808,9 @@ namespace dlib
             long stride_y,
             long stride_x,
             long padding_y,
-            long padding_x
+            long padding_x,
+            long dilation_y,
+            long dilation_x
         )
         {
             const auto d = data.host() + data.k()*data.nr()*data.nc()*n;
@@ -1816,8 +1820,8 @@ namespace dlib
             const float* t = &output(0,0);
 
             // now fill in the Toeplitz output matrix for the n-th sample in data.  
-            const long max_r = data.nr() + padding_y-(filter_nr-1);
-            const long max_c = data.nc() + padding_x-(filter_nc-1);
+            const long max_r = data.nr() + padding_y-dilation_y*(filter_nr-1);
+            const long max_c = data.nc() + padding_x-dilation_x*(filter_nc-1);
             for (long r = -padding_y; r < max_r; r+=stride_y)
             {
                 for (long c = -padding_x; c < max_c; c+=stride_x)
@@ -1828,8 +1832,8 @@ namespace dlib
                         {
                             for (long x = 0; x < filter_nc; ++x)
                             {
-                                long xx = c+x;
-                                long yy = r+y;
+                                long xx = c+x*dilation_x;
+                                long yy = r+y*dilation_y;
                                 if (boundary.contains(xx,yy))
                                     d[(k*data.nr() + yy)*data.nc() + xx] += *t;
                                 ++t;
@@ -1850,8 +1854,8 @@ namespace dlib
             DLIB_CASSERT(last_stride_y > 0 && last_stride_x > 0, "You must call setup() before calling this function.");
             output.set_size(data.num_samples(),
                             filters.num_samples(),
-                            1+(data.nr()+2*last_padding_y-filters.nr())/last_stride_y,
-                            1+(data.nc()+2*last_padding_x-filters.nc())/last_stride_x);
+                            1+(data.nr()+2*last_padding_y-last_dilation_y*(filters.nr()-1)-1)/last_stride_y,
+                            1+(data.nc()+2*last_padding_x-last_dilation_x*(filters.nc()-1)-1)/last_stride_x);
             (*this)(add_to_output, static_cast<tensor&>(output),data,filters);
         }
 
@@ -1873,14 +1877,14 @@ namespace dlib
 
             DLIB_CASSERT(output.num_samples() == data.num_samples());
             DLIB_CASSERT(output.k() == filters.num_samples());
-            DLIB_CASSERT(output.nr() == 1+(data.nr()+2*last_padding_y-filters.nr())/last_stride_y);
-            DLIB_CASSERT(output.nc() == 1+(data.nc()+2*last_padding_x-filters.nc())/last_stride_x);
+            DLIB_CASSERT(output.nr() == 1+(data.nr()+2*last_padding_y-last_dilation_y*(filters.nr()-1)-1)/last_stride_y);
+            DLIB_CASSERT(output.nc() == 1+(data.nc()+2*last_padding_x-last_dilation_x*(filters.nc()-1)-1)/last_stride_x);
 
 
             matrix<float> temp;
             for (long n = 0; n < data.num_samples(); ++n)
             {
-                img2col(temp, data, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x);
+                img2col(temp, data, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x, last_dilation_x, last_dilation_y);
 
                 if (add_to_output)
                     output.add_to_sample(n, mat(filters)*trans(temp));
@@ -1910,7 +1914,7 @@ namespace dlib
                                     
 
                 temp = trans(gi)*mat(filters);
-                col2img(temp, data_gradient, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x);
+                col2img(temp, data_gradient, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x, last_dilation_y, last_dilation_x);
             }
         }
 
@@ -1932,7 +1936,7 @@ namespace dlib
                               gradient_input.nr()*gradient_input.nc());
 
 
-                img2col(temp, data, n, filters_gradient.nr(), filters_gradient.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x);
+                img2col(temp, data, n, filters_gradient.nr(), filters_gradient.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x, last_dilation_y, last_dilation_x);
                 if (n == 0)
                 {
                     if (add_to_output)
