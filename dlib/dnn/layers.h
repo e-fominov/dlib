@@ -62,8 +62,8 @@ namespace dlib
             num_filters_(o.num_outputs),
             padding_y_(_padding_y),
             padding_x_(_padding_x),
-            dilation_x_(_dilation_x),
-            dilation_y_(_dilation_y)
+            dilation_y_(_dilation_y),
+            dilation_x_(_dilation_x)
         {
             DLIB_CASSERT(num_filters_ > 0);
         }
@@ -259,19 +259,20 @@ namespace dlib
                 deserialize(item.weight_decay_multiplier, in);
                 deserialize(item.bias_learning_rate_multiplier, in);
                 deserialize(item.bias_weight_decay_multiplier, in);
-                if (version == "con_5")
-                {
-                    deserialize(item.dilation_x_, in);
-                    deserialize(item.dilation_y_, in);
-                    if (item.dilation_y_ != _dilation_y) throw serialization_error("Wrong dilation_y found while deserializing dlib::con_");
-                    if (item.dilation_x_ != _dilation_x) throw serialization_error("Wrong dilation_x found while deserializing dlib::con_");
-                }
                 if (item.padding_y_ != _padding_y) throw serialization_error("Wrong padding_y found while deserializing dlib::con_");
                 if (item.padding_x_ != _padding_x) throw serialization_error("Wrong padding_x found while deserializing dlib::con_");
                 if (nr != _nr) throw serialization_error("Wrong nr found while deserializing dlib::con_");
                 if (nc != _nc) throw serialization_error("Wrong nc found while deserializing dlib::con_");
                 if (stride_y != _stride_y) throw serialization_error("Wrong stride_y found while deserializing dlib::con_");
                 if (stride_x != _stride_x) throw serialization_error("Wrong stride_x found while deserializing dlib::con_");
+
+                if (version == "con_5")
+                {
+                    deserialize(item.dilation_y_, in);
+                    deserialize(item.dilation_x_, in);
+                    if (item.dilation_y_ != _dilation_y) throw serialization_error("Wrong dilation_y found while deserializing dlib::con_");
+                    if (item.dilation_x_ != _dilation_x) throw serialization_error("Wrong dilation_x found while deserializing dlib::con_");
+                }
             }
             else
             {
