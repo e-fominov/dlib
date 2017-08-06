@@ -594,6 +594,11 @@ namespace dlib
 
 // ----------------------------------------------------------------------------------------
 
+    template <typename SUBNET, typename DETAILS>
+    unsigned int get_sample_expansion_factor(const SUBNET& subnet, const DETAILS&)
+    {
+        return subnet.sample_expansion_factor();
+    }
     template <typename LAYER_DETAILS, typename SUBNET, typename enabled = void>
     class add_layer;
 
@@ -908,7 +913,7 @@ namespace dlib
         const layer_details_type& layer_details() const { return details; } 
         layer_details_type& layer_details() { return details; } 
 
-        unsigned int sample_expansion_factor() const { return subnet().sample_expansion_factor(); }
+        unsigned int sample_expansion_factor() const { return get_sample_expansion_factor(subnet(), layer_details()); }
 
         void clean()
         {
