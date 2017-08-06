@@ -2852,7 +2852,10 @@ namespace dlib
             return subnetwork; 
         }
 
-        unsigned int sample_expansion_factor() const { return subnet().sample_expansion_factor(); }
+        unsigned int sample_expansion_factor() const
+        {
+            return layer<TAG_TYPE,1>(subnet()).sample_expansion_factor();
+        }
 
         void clean()
         {
