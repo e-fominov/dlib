@@ -466,14 +466,22 @@ namespace dlib
             // some small variability in how boxes get positioned between the training data
             // and the coordinate system used by the detector when it runs.  So relaxing it
             // here takes care of that.
-            const double relax_amount = 0.05;
-            auto iou_thresh = std::min(1.0, overlaps_nms.get_iou_thresh()+relax_amount);
-            auto percent_covered_thresh = std::min(1.0, overlaps_nms.get_percent_covered_thresh()+relax_amount);
+            auto iou_thresh             = advance_toward_1(overlaps_nms.get_iou_thresh());
+            auto percent_covered_thresh = advance_toward_1(overlaps_nms.get_percent_covered_thresh());
             overlaps_nms = test_box_overlap(iou_thresh, percent_covered_thresh);
         }
 
 
     private:
+
+        static double advance_toward_1 (
+            double val
+        )
+        {
+            if (val < 1)
+                val += (1-val)*0.1;
+            return val;
+        }
 
         static size_t count_overlaps (
             const std::vector<rectangle>& rects,
@@ -697,12 +705,12 @@ namespace dlib
             double loss = 0;
 
             float* g = grad.host_write_only();
-            // zero initialize grad.
-            for (auto&& x : grad)
-                x = 0;
+            for (size_t i = 0; i < grad.size(); ++i)
+                g[i] = 0;
 
             const float* out_data = output_tensor.host();
 
+            std::vector<size_t> truth_idxs;  truth_idxs.reserve(truth->size());
             std::vector<intermediate_detection> dets;
             for (long i = 0; i < output_tensor.num_samples(); ++i)
             {
@@ -726,14 +734,17 @@ namespace dlib
                             loss -= 1;
                             continue;
                         }
-                        loss -= out_data[(k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x()];
+                        const size_t idx = (k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x();
+                        loss -= out_data[idx];
                         // compute gradient
-                        g[(k*output_tensor.nr() + p.y())*output_tensor.nc() + p.x()] = -scale;
+                        g[idx] = -scale;
+                        truth_idxs.push_back(idx);
                     }
                     else
                     {
                         // This box was ignored so shouldn't have been counted in the loss.
                         loss -= 1;
+                        truth_idxs.push_back(0);
                     }
                 }
 
@@ -772,6 +783,34 @@ namespace dlib
                     }
                 }
 
+                // Check if any of the truth boxes are unobtainable because the NMS is
+                // killing them.  If so, automatically set those unobtainable boxes to
+                // ignore and print a warning message to the user.
+                for (size_t i = 0; i < hit_truth_table.size(); ++i)
+                {
+                    if (!hit_truth_table[i] && !(*truth)[i].ignore) 
+                    {
+                        // So we didn't hit this truth box.  Is that because there is
+                        // another, different truth box, that overlaps it according to NMS?
+                        const std::pair<double,unsigned int> hittruth = find_best_match(*truth, (*truth)[i], i);
+                        if (hittruth.second == i || (*truth)[hittruth.second].ignore)
+                            continue;
+                        rectangle best_matching_truth_box = (*truth)[hittruth.second];
+                        if (options.overlaps_nms(best_matching_truth_box, (*truth)[i]))
+                        {
+                            const size_t idx = truth_idxs[i];
+                            // We are ignoring this box so we shouldn't have counted it in the
+                            // loss in the first place.  So we subtract out the loss values we
+                            // added for it in the code above.
+                            loss -= 1-out_data[idx];
+                            g[idx] = 0;
+                            std::cout << "Warning, ignoring object.  We encountered a truth rectangle located at " << (*truth)[i].rect;
+                            std::cout << " that is suppressed by non-max-suppression ";
+                            std::cout << "because it is overlapped by another truth rectangle located at " << best_matching_truth_box 
+                                      << " (IoU:"<< box_intersection_over_union(best_matching_truth_box,(*truth)[i]) <<")." << std::endl;
+                        }
+                    }
+                }
 
                 hit_truth_table.assign(hit_truth_table.size(), false);
                 final_dets.clear();
@@ -851,10 +890,26 @@ namespace dlib
             deserialize(item.options, in);
         }
 
-        friend std::ostream& operator<<(std::ostream& out, const loss_mmod_& )
+        friend std::ostream& operator<<(std::ostream& out, const loss_mmod_& item)
         {
-            // TODO, add options fields
-            out << "loss_mmod";
+            out << "loss_mmod\t (";
+
+            out << "detector_windows:(";
+            auto& opts = item.options;
+            for (size_t i = 0; i < opts.detector_windows.size(); ++i)
+            {
+                out << opts.detector_windows[i].width << "x" << opts.detector_windows[i].height;
+                if (i+1 < opts.detector_windows.size())
+                    out << ",";
+            }
+            out << ")";
+            out << ", loss per FA:" << opts.loss_per_false_alarm;
+            out << ", loss per miss:" << opts.loss_per_missed_target;
+            out << ", truth match IOU thresh:" << opts.truth_match_iou_threshold;
+            out << ", overlaps_nms:("<<opts.overlaps_nms.get_iou_thresh()<<","<<opts.overlaps_nms.get_percent_covered_thresh()<<")";
+            out << ", overlaps_ignore:("<<opts.overlaps_ignore.get_iou_thresh()<<","<<opts.overlaps_ignore.get_percent_covered_thresh()<<")";
+
+            out << ")";
             return out;
         }
 
@@ -1013,11 +1068,20 @@ namespace dlib
             const rectangle& rect
         ) const
         {
+            return find_best_match(boxes, rect, boxes.size());
+        }
+
+        std::pair<double,unsigned int> find_best_match(
+            const std::vector<mmod_rect>& boxes,
+            const rectangle& rect,
+            const size_t excluded_idx
+        ) const
+        {
             double match = 0;
             unsigned int best_idx = 0;
             for (unsigned long i = 0; i < boxes.size(); ++i)
             {
-                if (boxes[i].ignore)
+                if (boxes[i].ignore || excluded_idx == i)
                     continue;
 
                 const double new_match = box_intersection_over_union(rect, boxes[i]);
