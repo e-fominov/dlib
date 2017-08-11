@@ -1005,8 +1005,10 @@ namespace dlib { namespace tt
             int stride_y,
             int stride_x,
             int padding_y,
-            int padding_x
-        ) {impl.setup(data,filters,stride_y,stride_x,padding_y,padding_x); }
+            int padding_x,
+            int dilation_y,
+            int dilation_x
+        ) {impl.setup(data,filters,stride_y,stride_x,padding_y,padding_x,dilation_y,dilation_x); }
         /*!
             requires
                 - filters.k() == data.k()
@@ -1014,6 +1016,8 @@ namespace dlib { namespace tt
                 - stride_x > 0
                 - 0 <= padding_y < filters.nr()
                 - 0 <= padding_x < filters.nc()
+                - 0 < dilation_x
+                - 0 < dilation_y
             ensures
                 - When operator() is called, the output tensor will have these dimensions:
                     - output.nr() == 1+(data.nr() + 2*padding_y - filters.nr())/stride_y

@@ -778,6 +778,8 @@ namespace dlib
             stride_x = 0;
             padding_y = 0;
             padding_x = 0;
+            dilation_y = 0;
+            dilation_x = 0;
             data_num_samples = 0;
             data_k = 0;
             data_nr = 0;
@@ -808,8 +810,10 @@ namespace dlib
             int stride_y_,
             int stride_x_,
             int padding_y_,
-            int padding_x_
-        ) 
+            int padding_x_,
+            int dilation_y_,
+            int dilation_x_
+        )
         {
             DLIB_CASSERT(data.k() == filters.k());
 
@@ -819,6 +823,8 @@ namespace dlib
                 stride_x_ == stride_x &&
                 padding_y_ == padding_y && 
                 padding_x_ == padding_x &&
+                dilation_y_ == dilation_y &&
+                dilation_x_ == dilation_x &&
                 data_num_samples == data.num_samples() &&
                 data_k == data.k() &&
                 data_nr == data.nr() &&
@@ -838,6 +844,8 @@ namespace dlib
                 stride_x = stride_x_;
                 padding_y = padding_y_;
                 padding_x = padding_x_;
+                dilation_y = dilation_y_;
+                dilation_x = dilation_x_;
                 data_num_samples = data.num_samples();
                 data_k = data.k();
                 data_nr = data.nr();
@@ -863,7 +871,8 @@ namespace dlib
                         padding_x, // horizontal padding
                         stride_y,
                         stride_x,
-                        1, 1, // must be 1,1
+                        dilation_y,
+                        dilation_x,
                         CUDNN_CROSS_CORRELATION,
                         CUDNN_DATA_FLOAT)); // could also be CUDNN_CONVOLUTION
 #else
@@ -872,7 +881,8 @@ namespace dlib
                         padding_x, // horizontal padding
                         stride_y,
                         stride_x,
-                        1, 1, // must be 1,1
+                        dilation_y,
+                        dilation_x,
                         CUDNN_CROSS_CORRELATION)); // could also be CUDNN_CONVOLUTION
 #endif
 
@@ -1025,8 +1035,8 @@ namespace dlib
 
             DLIB_CASSERT(output.num_samples() == data.num_samples(),out_num_samples << "  " << data.num_samples());
             DLIB_CASSERT(output.k() == filters.num_samples());
-            DLIB_CASSERT(output.nr() == 1+(data.nr()+2*padding_y-filters.nr())/stride_y);
-            DLIB_CASSERT(output.nc() == 1+(data.nc()+2*padding_x-filters.nc())/stride_x);
+            DLIB_CASSERT(output.nr() == 1+(data.nr()+2*padding_y-dilation_y*(filters.nr()-1)-1)/stride_y);
+            DLIB_CASSERT(output.nc() == 1+(data.nc()+2*padding_x-dilation_x*(filters.nc()-1)-1)/stride_x);
 
 
 

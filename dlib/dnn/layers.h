@@ -34,7 +34,9 @@ namespace dlib
         int _stride_y,
         int _stride_x,
         int _padding_y = _stride_y!=1? 0 : _nr/2,
-        int _padding_x = _stride_x!=1? 0 : _nc/2
+        int _padding_x = _stride_x!=1? 0 : _nc/2,
+        int _dilation_y = 1,
+        int _dilation_x = 1
         >
     class con_
     {
@@ -45,8 +47,10 @@ namespace dlib
         static_assert(_nc > 0, "The number of columns in a filter must be > 0");
         static_assert(_stride_y > 0, "The filter stride must be > 0");
         static_assert(_stride_x > 0, "The filter stride must be > 0");
-        static_assert(0 <= _padding_y && _padding_y < _nr, "The padding must be smaller than the filter size.");
-        static_assert(0 <= _padding_x && _padding_x < _nc, "The padding must be smaller than the filter size.");
+        static_assert(0 <= _padding_y && _padding_y <= _dilation_y*(_nr-1)+1, "The padding must be smaller than the filter size.");
+        static_assert(0 <= _padding_x && _padding_x <= _dilation_x*(_nc-1)+1, "The padding must be smaller than the filter size.");
+        static_assert(0 < _dilation_x, "The dilation must be greater than zero.");
+        static_assert(0 < _dilation_y, "The dilation must be greater than zero.");
 
         con_(
             num_con_outputs o
@@ -57,7 +61,9 @@ namespace dlib
             bias_weight_decay_multiplier(0),
             num_filters_(o.num_outputs),
             padding_y_(_padding_y),
-            padding_x_(_padding_x)
+            padding_x_(_padding_x),
+            dilation_y_(_dilation_y),
+            dilation_x_(_dilation_x)
         {
             DLIB_CASSERT(num_filters_ > 0);
         }
@@ -71,6 +77,8 @@ namespace dlib
         long stride_x() const { return _stride_x; }
         long padding_y() const { return padding_y_; }
         long padding_x() const { return padding_x_; }
+        long dilation_y() const { return dilation_y_; }
+        long dilation_x() const { return dilation_x_; }
 
         void set_num_filters(long num) 
         {
@@ -120,7 +128,9 @@ namespace dlib
             bias_weight_decay_multiplier(item.bias_weight_decay_multiplier),
             num_filters_(item.num_filters_),
             padding_y_(item.padding_y_),
-            padding_x_(item.padding_x_)
+            padding_x_(item.padding_x_),
+            dilation_y_(item.dilation_y_),
+            dilation_x_(item.dilation_x_)
         {
             // this->conv is non-copyable and basically stateless, so we have to write our
             // own copy to avoid trying to copy it and getting an error.
@@ -140,6 +150,8 @@ namespace dlib
             biases = item.biases;
             padding_y_ = item.padding_y_;
             padding_x_ = item.padding_x_;
+            dilation_y_ = item.dilation_y_;
+            dilation_x_ = item.dilation_x_;
             learning_rate_multiplier = item.learning_rate_multiplier;
             weight_decay_multiplier = item.weight_decay_multiplier;
             bias_learning_rate_multiplier = item.bias_learning_rate_multiplier;
@@ -175,7 +187,9 @@ namespace dlib
                        _stride_y,
                        _stride_x,
                        padding_y_,
-                       padding_x_);
+                       padding_x_,
+                       dilation_y_,
+                       dilation_x_);
             conv(false, output,
                 sub.get_output(),
                 filters(params,0));
@@ -202,7 +216,7 @@ namespace dlib
 
         friend void serialize(const con_& item, std::ostream& out)
         {
-            serialize("con_4", out);
+            serialize("con_5", out);
             serialize(item.params, out);
             serialize(item.num_filters_, out);
             serialize(_nr, out);
@@ -217,6 +231,8 @@ namespace dlib
             serialize(item.weight_decay_multiplier, out);
             serialize(item.bias_learning_rate_multiplier, out);
             serialize(item.bias_weight_decay_multiplier, out);
+            serialize(item.dilation_y_, out);
+            serialize(item.dilation_x_, out);
         }
 
         friend void deserialize(con_& item, std::istream& in)
@@ -227,7 +243,7 @@ namespace dlib
             long nc;
             int stride_y;
             int stride_x;
-            if (version == "con_4")
+            if (version == "con_4" || version == "con_5")
             {
                 deserialize(item.params, in);
                 deserialize(item.num_filters_, in);
@@ -249,6 +265,14 @@ namespace dlib
                 if (nc != _nc) throw serialization_error("Wrong nc found while deserializing dlib::con_");
                 if (stride_y != _stride_y) throw serialization_error("Wrong stride_y found while deserializing dlib::con_");
                 if (stride_x != _stride_x) throw serialization_error("Wrong stride_x found while deserializing dlib::con_");
+
+                if (version == "con_5")
+                {
+                    deserialize(item.dilation_y_, in);
+                    deserialize(item.dilation_x_, in);
+                    if (item.dilation_y_ != _dilation_y) throw serialization_error("Wrong dilation_y found while deserializing dlib::con_");
+                    if (item.dilation_x_ != _dilation_x) throw serialization_error("Wrong dilation_x found while deserializing dlib::con_");
+                }
             }
             else
             {
@@ -267,6 +291,8 @@ namespace dlib
                 << ", stride_x="<<_stride_x
                 << ", padding_y="<<item.padding_y_
                 << ", padding_x="<<item.padding_x_
+                << ", dilation_y="<<item.dilation_y_
+                << ", dilation_x="<<item.dilation_x_
                 << ")";
             out << " learning_rate_mult="<<item.learning_rate_multiplier;
             out << " weight_decay_mult="<<item.weight_decay_multiplier;
@@ -285,6 +311,8 @@ namespace dlib
                 << " stride_x='"<<_stride_x<<"'"
                 << " padding_y='"<<item.padding_y_<<"'"
                 << " padding_x='"<<item.padding_x_<<"'"
+                << " dilation_y='"<<item.dilation_y_<<"'"
+                << " dilation_x='"<<item.dilation_x_<<"'"
                 << " learning_rate_mult='"<<item.learning_rate_multiplier<<"'"
                 << " weight_decay_mult='"<<item.weight_decay_multiplier<<"'"
                 << " bias_learning_rate_mult='"<<item.bias_learning_rate_multiplier<<"'"
@@ -306,9 +334,11 @@ namespace dlib
         long num_filters_;
 
         // These are here only because older versions of con (which you might encounter
-        // serialized to disk) used different padding settings.
+        // serialized to disk) used different padding or dilation settings.
         int padding_y_;
         int padding_x_;
+        int dilation_x_;
+        int dilation_y_;
 
     };
 

@@ -238,7 +238,9 @@ namespace dlib
                 int stride_y,
                 int stride_x,
                 int padding_y,
-                int padding_x
+                int padding_x,
+                int dilation_y,
+                int dilation_x
             );
 
         private:
@@ -248,6 +250,8 @@ namespace dlib
             int stride_x;
             int padding_y;
             int padding_x;
+            int dilation_y;
+            int dilation_x;
             long data_num_samples, data_k, data_nr, data_nc;
             long filters_num_samples, filters_k, filters_nr, filters_nc;
 
