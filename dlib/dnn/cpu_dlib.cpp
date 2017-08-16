@@ -1774,10 +1774,10 @@ namespace dlib
 
             for (long r = 0; r < out_nr; r++)
             {
-                long yc = r * stride_y;
+                long yc = r * stride_y - padding_y + (filter_nr/2) * dilation_y;
                 for (long c = 0; c < out_nc; c++)
                 {
-                    long xc = c * stride_x;
+                    long xc = c * stride_x - padding_x + (filter_nc/2) * dilation_x;
                     for (long k = 0; k < data.k(); ++k)
                     {
                         for (long y = 0; y < filter_nr; ++y)
@@ -1830,10 +1830,10 @@ namespace dlib
 
             for (long r = 0; r < out_nr; r++)
             {
-                long yc = r * stride_y;
+                long yc = r * stride_y - padding_y + (filter_nr/2) * dilation_y;
                 for (long c = 0; c < out_nc; c++)
                 {
-                    long xc = c * stride_x;
+                    long xc = c * stride_x - padding_x + (filter_nc/2) * dilation_x;
                     for (long k = 0; k < data.k(); ++k)
                     {
                         for (long y = 0; y < filter_nr; ++y)
