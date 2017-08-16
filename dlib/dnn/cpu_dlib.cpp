@@ -1771,21 +1771,25 @@ namespace dlib
 
             // now fill in the Toeplitz output matrix for the n-th sample in data.  
             size_t cnt = 0;
-            const long max_r = data.nr() + padding_y-dilation_y*(filter_nr-1);
-            const long max_c = data.nc() + padding_x-dilation_x*(filter_nc-1);
-            for (long r = -padding_y; r < max_r; r+=stride_y)
+
+            for (long r = 0; r < out_nr; r++)
             {
-                for (long c = -padding_x; c < max_c; c+=stride_x)
+                long yc = r * stride_y;
+                for (long c = 0; c < out_nc; c++)
                 {
+                    long xc = c * stride_x;
                     for (long k = 0; k < data.k(); ++k)
                     {
                         for (long y = 0; y < filter_nr; ++y)
                         {
+                            long yy = yc + (y - filter_nr/2) * dilation_y;
+
                             for (long x = 0; x < filter_nc; ++x)
                             {
+                                long xx = xc + (x - filter_nc/2) * dilation_x;
+
                                 DLIB_ASSERT(cnt < output.size());
-                                long xx = c+x*dilation_x;
-                                long yy = r+y*dilation_y;
+
                                 if (boundary.contains(xx,yy))
                                     *t = d[(k*data.nr() + yy)*data.nc() + xx];
                                 else
@@ -1819,21 +1823,26 @@ namespace dlib
             DLIB_CASSERT(output.size() != 0);
             const float* t = &output(0,0);
 
-            // now fill in the Toeplitz output matrix for the n-th sample in data.  
-            const long max_r = data.nr() + padding_y-dilation_y*(filter_nr-1);
-            const long max_c = data.nc() + padding_x-dilation_x*(filter_nc-1);
-            for (long r = -padding_y; r < max_r; r+=stride_y)
+            const long out_nr = 1+(data.nr()+2*padding_y-dilation_y*(filter_nr-1)-1)/stride_y;
+            const long out_nc = 1+(data.nc()+2*padding_x-dilation_x*(filter_nc-1)-1)/stride_x;
+
+            // now fill in the Toeplitz output matrix for the n-th sample in data.
+
+            for (long r = 0; r < out_nr; r++)
             {
-                for (long c = -padding_x; c < max_c; c+=stride_x)
+                long yc = r * stride_y;
+                for (long c = 0; c < out_nc; c++)
                 {
+                    long xc = c * stride_x;
                     for (long k = 0; k < data.k(); ++k)
                     {
                         for (long y = 0; y < filter_nr; ++y)
                         {
+                            long yy = yc + (y - filter_nr/2) * dilation_y;
+
                             for (long x = 0; x < filter_nc; ++x)
                             {
-                                long xx = c+x*dilation_x;
-                                long yy = r+y*dilation_y;
+                                long xx = xc + (x - filter_nc/2) * dilation_x;
                                 if (boundary.contains(xx,yy))
                                     d[(k*data.nr() + yy)*data.nc() + xx] += *t;
                                 ++t;
