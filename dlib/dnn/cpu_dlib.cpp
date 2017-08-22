@@ -1893,7 +1893,7 @@ namespace dlib
             matrix<float> temp;
             for (long n = 0; n < data.num_samples(); ++n)
             {
-                img2col(temp, data, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x, last_dilation_x, last_dilation_y);
+                img2col(temp, data, n, filters.nr(), filters.nc(), last_stride_y, last_stride_x, last_padding_y, last_padding_x, last_dilation_y, last_dilation_x);
 
                 if (add_to_output)
                     output.add_to_sample(n, mat(filters)*trans(temp));
