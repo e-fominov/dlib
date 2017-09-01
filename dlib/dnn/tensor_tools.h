@@ -306,6 +306,23 @@ namespace dlib { namespace tt
                 - Instead of assigning the result to dest, this function adds the result to dest.
     !*/
 
+    void multiply_zero_padded (
+        bool add_to,
+        tensor& dest,
+        const tensor& src1,
+        const tensor& src2
+    );
+    /*!
+        ensures
+            - if (add_to) then
+                - performs: dest += src1 * src2
+            - else
+                - performs: dest = src1 * src2
+            - In either case, the multiplication happens pointwise according to 4D tensor
+              arithmetic.  If the dimensions don't match then missing elements are presumed
+              to be equal to 0.
+    !*/
+
 // ----------------------------------------------------------------------------------------
 
     void affine_transform(
@@ -1531,6 +1548,7 @@ namespace dlib { namespace tt
 // ----------------------------------------------------------------------------------------
 
     void copy_tensor(
+            bool add_to,
             tensor& dest,
             size_t dest_k_offset,
             const tensor& src,
@@ -1545,9 +1563,14 @@ namespace dlib { namespace tt
             - dest.k() - dest_k_offset >= count_k
             - src.k() - src_k_offset >= count_k
             - is_same_object(dest,src) == false
+            - The memory areas of src and dest do not overlap.
         ensures
-            - performs: dest[i, k + dest_k_offset, r, c] = src[i, k + src_k_offset, r, c], where k in [0..count_k]
-              Copies content of each sample from src in to corresponding place of sample at dest.
+            - if (add_to) then
+                - performs: dest[i, k + dest_k_offset, r, c] += src[i, k + src_k_offset, r, c], where k in [0..count_k]
+                  i.e., adds content of each sample from src in to corresponding place of sample at dest.
+            - else
+                - performs: dest[i, k + dest_k_offset, r, c]  = src[i, k + src_k_offset, r, c], where k in [0..count_k]
+                  i.e., copies content of each sample from src in to corresponding place of sample at dest.
     !*/
 
 // ----------------------------------------------------------------------------------------

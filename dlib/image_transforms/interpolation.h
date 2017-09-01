@@ -10,6 +10,7 @@
 #include "image_pyramid.h"
 #include "../simd.h"
 #include "../image_processing/full_object_detection.h"
+#include <limits>
 
 namespace dlib
 {
@@ -828,8 +829,8 @@ namespace dlib
                 simd4f bl(in_img[bottom][fleft[0]],  in_img[bottom][fleft[1]],  in_img[bottom][fleft[2]],  in_img[bottom][fleft[3]]);
                 simd4f br(in_img[bottom][fright[0]], in_img[bottom][fright[1]], in_img[bottom][fright[2]], in_img[bottom][fright[3]]);
 
-                simd4i out = simd4i(tlf*tl + trf*tr + blf*bl + brf*br);
-                int32 fout[4];
+                simd4f out = simd4f(tlf*tl + trf*tr + blf*bl + brf*br);
+                float fout[4];
                 out.store(fout);
 
                 out_img[r][c]   = static_cast<T>(fout[0]);
@@ -1005,6 +1006,29 @@ namespace dlib
             );
 
         resize_image(in_img, out_img, interpolate_bilinear());
+    }
+
+// ----------------------------------------------------------------------------------------
+
+    template <
+        typename image_type
+        >
+    void resize_image (
+        double size_scale,
+        image_type& img 
+    )
+    {
+        // make sure requires clause is not broken
+        DLIB_ASSERT( size_scale > 0 ,
+            "\t void resize_image()"
+            << "\n\t Invalid inputs were given to this function."
+            << "\n\t size_scale:  " << size_scale
+            );
+
+        image_type temp;
+        set_image_size(temp, std::round(size_scale*num_rows(img)), std::round(size_scale*num_columns(img)));
+        resize_image(img, temp);
+        swap(img, temp);
     }
 
 // ----------------------------------------------------------------------------------------
@@ -1266,7 +1290,8 @@ namespace dlib
         >
     void upsample_image_dataset (
         image_array_type& images,
-        std::vector<std::vector<rectangle> >& objects
+        std::vector<std::vector<rectangle> >& objects,
+        unsigned long max_image_size = std::numeric_limits<unsigned long>::max()
     )
     {
         // make sure requires clause is not broken
@@ -1281,11 +1306,15 @@ namespace dlib
         pyramid_type pyr;
         for (unsigned long i = 0; i < images.size(); ++i)
         {
-            pyramid_up(images[i], temp, pyr);
-            swap(temp, images[i]);
-            for (unsigned long j = 0; j < objects[i].size(); ++j)
+            const unsigned long img_size = num_rows(images[i])*num_columns(images[i]);
+            if (img_size <= max_image_size)
             {
-                objects[i][j] = pyr.rect_up(objects[i][j]);
+                pyramid_up(images[i], temp, pyr);
+                swap(temp, images[i]);
+                for (unsigned long j = 0; j < objects[i].size(); ++j)
+                {
+                    objects[i][j] = pyr.rect_up(objects[i][j]);
+                }
             }
         }
     }
@@ -1296,7 +1325,8 @@ namespace dlib
         >
     void upsample_image_dataset (
         image_array_type& images,
-        std::vector<std::vector<mmod_rect>>& objects
+        std::vector<std::vector<mmod_rect>>& objects,
+        unsigned long max_image_size = std::numeric_limits<unsigned long>::max()
     )
     {
         // make sure requires clause is not broken
@@ -1311,11 +1341,15 @@ namespace dlib
         pyramid_type pyr;
         for (unsigned long i = 0; i < images.size(); ++i)
         {
-            pyramid_up(images[i], temp, pyr);
-            swap(temp, images[i]);
-            for (unsigned long j = 0; j < objects[i].size(); ++j)
+            const unsigned long img_size = num_rows(images[i])*num_columns(images[i]);
+            if (img_size <= max_image_size)
             {
-                objects[i][j].rect = pyr.rect_up(objects[i][j].rect);
+                pyramid_up(images[i], temp, pyr);
+                swap(temp, images[i]);
+                for (unsigned long j = 0; j < objects[i].size(); ++j)
+                {
+                    objects[i][j].rect = pyr.rect_up(objects[i][j].rect);
+                }
             }
         }
     }
@@ -1327,7 +1361,8 @@ namespace dlib
     void upsample_image_dataset (
         image_array_type& images,
         std::vector<std::vector<rectangle> >& objects,
-        std::vector<std::vector<rectangle> >& objects2 
+        std::vector<std::vector<rectangle> >& objects2,
+        unsigned long max_image_size = std::numeric_limits<unsigned long>::max()
     )
     {
         // make sure requires clause is not broken
@@ -1344,15 +1379,19 @@ namespace dlib
         pyramid_type pyr;
         for (unsigned long i = 0; i < images.size(); ++i)
         {
-            pyramid_up(images[i], temp, pyr);
-            swap(temp, images[i]);
-            for (unsigned long j = 0; j < objects[i].size(); ++j)
+            const unsigned long img_size = num_rows(images[i])*num_columns(images[i]);
+            if (img_size <= max_image_size)
             {
-                objects[i][j] = pyr.rect_up(objects[i][j]);
-            }
-            for (unsigned long j = 0; j < objects2[i].size(); ++j)
-            {
-                objects2[i][j] = pyr.rect_up(objects2[i][j]);
+                pyramid_up(images[i], temp, pyr);
+                swap(temp, images[i]);
+                for (unsigned long j = 0; j < objects[i].size(); ++j)
+                {
+                    objects[i][j] = pyr.rect_up(objects[i][j]);
+                }
+                for (unsigned long j = 0; j < objects2[i].size(); ++j)
+                {
+                    objects2[i][j] = pyr.rect_up(objects2[i][j]);
+                }
             }
         }
     }

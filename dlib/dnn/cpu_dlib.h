@@ -30,6 +30,13 @@ namespace dlib
             const tensor& src2
         );
 
+        void multiply_zero_padded (
+            bool add_to,
+            tensor& dest,
+            const tensor& src1,
+            const tensor& src2
+        );
+
         void add(
             float beta,
             tensor& dest,
@@ -446,6 +453,7 @@ namespace dlib
     // -----------------------------------------------------------------------------------
 
         void copy_tensor(
+            bool add_to,
             tensor& dest,
             size_t dest_k_offset,
             const tensor& src,

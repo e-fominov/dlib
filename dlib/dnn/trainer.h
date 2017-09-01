@@ -433,10 +433,7 @@ namespace dlib
         ) const
         {
             wait_for_thread_to_pause();
-            running_stats<double> tmp;
-            for (auto& x : test_previous_loss_values)
-                tmp.add(x);
-            return tmp.mean();
+            return rs_test.mean();
         }
 
         void clear_average_loss (
@@ -582,6 +579,7 @@ namespace dlib
         void record_test_loss(double loss)
         {
             test_previous_loss_values.push_back(loss);
+            rs_test.add(loss);
             // discard really old loss values.
             while (test_previous_loss_values.size() > test_iter_without_progress_thresh)
                 test_previous_loss_values.pop_front();
@@ -699,7 +697,10 @@ namespace dlib
                                 // optimization has flattened out, so drop the learning rate. 
                                 learning_rate = learning_rate_shrink*learning_rate;
                                 test_steps_without_progress = 0;
-                                test_previous_loss_values.clear();
+                                // Empty out some of the previous loss values so that test_steps_without_progress 
+                                // will decrease below test_iter_without_progress_thresh.  
+                                for (int cnt = 0; cnt < test_previous_loss_values_dump_amount && test_previous_loss_values.size() > 0; ++cnt)
+                                    test_previous_loss_values.pop_front();
                             }
                         }
                     }
@@ -804,7 +805,7 @@ namespace dlib
                         // this because sometimes a mini-batch might be bad and cause the
                         // loss to suddenly jump up, making count_steps_without_decrease()
                         // return a large number.  But if we discard the top 10% of the
-                        // values in previous_loss_values when we are robust to that kind
+                        // values in previous_loss_values then we are robust to that kind
                         // of noise.  Another way of looking at it, if the reason
                         // count_steps_without_decrease() returns a large value is only
                         // because the most recent loss values have suddenly been large,
@@ -816,7 +817,10 @@ namespace dlib
                             // optimization has flattened out, so drop the learning rate. 
                             learning_rate = learning_rate_shrink*learning_rate;
                             steps_without_progress = 0;
-                            previous_loss_values.clear();
+                            // Empty out some of the previous loss values so that steps_without_progress 
+                            // will decrease below iter_without_progress_thresh.  
+                            for (int cnt = 0; cnt < previous_loss_values_dump_amount && previous_loss_values.size() > 0; ++cnt)
+                                previous_loss_values.pop_front();
                         }
                     }
                 }
@@ -855,7 +859,7 @@ namespace dlib
             min_learning_rate = 1e-5;
             iter_without_progress_thresh = 2000;
             steps_without_progress = 0;
-            test_iter_without_progress_thresh = 200;
+            test_iter_without_progress_thresh = 500;
             test_steps_without_progress = 0;
 
             learning_rate_shrink = 0.1;
@@ -873,6 +877,11 @@ namespace dlib
             prob_loss_increasing_thresh = prob_loss_increasing_thresh_default_value;
             updated_net_since_last_sync = false;
             sync_file_reloaded = false;
+            previous_loss_values_dump_amount = 400;
+            test_previous_loss_values_dump_amount = 100;
+
+            rs_test = running_stats_decayed<double>(200);
+
             start();
         }
 
@@ -883,12 +892,13 @@ namespace dlib
         friend void serialize(const dnn_trainer& item, std::ostream& out)
         {
             item.wait_for_thread_to_pause();
-            int version = 9;
+            int version = 12;
             serialize(version, out);
 
             size_t nl = dnn_trainer::num_layers;
             serialize(nl, out);
             serialize(item.rs, out);
+            serialize(item.rs_test, out);
             serialize(item.previous_loss_values, out);
             serialize(item.max_num_epochs, out);
             serialize(item.mini_batch_size, out);
@@ -909,6 +919,8 @@ namespace dlib
             serialize(item.test_iter_without_progress_thresh.load(), out);
             serialize(item.test_steps_without_progress.load(), out);
             serialize(item.test_previous_loss_values, out);
+            serialize(item.previous_loss_values_dump_amount, out);
+            serialize(item.test_previous_loss_values_dump_amount, out);
 
         }
         friend void deserialize(dnn_trainer& item, std::istream& in)
@@ -916,7 +928,7 @@ namespace dlib
             item.wait_for_thread_to_pause();
             int version = 0;
             deserialize(version, in);
-            if (version != 9)
+            if (version != 12)
                 throw serialization_error("Unexpected version found while deserializing dlib::dnn_trainer.");
 
             size_t num_layers = 0;
@@ -932,6 +944,7 @@ namespace dlib
 
             double dtemp; long ltemp;
             deserialize(item.rs, in);
+            deserialize(item.rs_test, in);
             deserialize(item.previous_loss_values, in);
             deserialize(item.max_num_epochs, in);
             deserialize(item.mini_batch_size, in);
@@ -952,6 +965,8 @@ namespace dlib
             deserialize(ltemp, in); item.test_iter_without_progress_thresh = ltemp;
             deserialize(ltemp, in); item.test_steps_without_progress = ltemp;
             deserialize(item.test_previous_loss_values, in);
+            deserialize(item.previous_loss_values_dump_amount, in);
+            deserialize(item.test_previous_loss_values_dump_amount, in);
 
             if (item.devices.size() > 1)
             {
@@ -1214,6 +1229,7 @@ namespace dlib
 
 
         running_stats<double> rs;
+        running_stats_decayed<double> rs_test;
         std::deque<double> previous_loss_values;
         unsigned long max_num_epochs;
         size_t mini_batch_size;
@@ -1259,6 +1275,8 @@ namespace dlib
         std::atomic<bool> updated_net_since_last_sync;
 
         bool sync_file_reloaded;
+        int previous_loss_values_dump_amount;
+        int test_previous_loss_values_dump_amount;
     };
 
 // ----------------------------------------------------------------------------------------

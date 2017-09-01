@@ -515,6 +515,134 @@ namespace dlib
 
     // ------------------------------------------------------------------------------------
 
+        __global__ void _cuda_mult1(float* d, const float* s1, const float* s2, size_t n)
+        {
+            for (auto i : grid_stride_range(0, n))
+            {
+                d[i] = s1[i]*s2[i];
+            }
+        }
+
+        __global__ void _cuda_mult1_add_to(float* d, const float* s1, const float* s2, size_t n)
+        {
+            for (auto i : grid_stride_range(0, n))
+            {
+                d[i] += s1[i]*s2[i];
+            }
+        }
+
+        __global__ void _cuda_mult2(float* d, const float* s1, const float* s2, 
+                                   size_t dn, size_t dk, size_t dr, size_t dc,
+                                   size_t s1n, size_t s1k, size_t s1r, size_t s1c,
+                                   size_t s2n, size_t s2k, size_t s2r, size_t s2c)
+        {
+            for (auto i : grid_stride_range(0, dn*dk*dr*dc))
+            {
+                size_t n,k,r,c;
+                unpack_idx(i, dk,dr,dc, n,k,r,c);
+
+                float v1 = 0;
+                float v2 = 0;
+
+                if (n < s1n &&
+                    k < s1k &&
+                    r < s1r &&
+                    c < s1c )
+                {
+                    v1 = s1[pack_idx(s1k,s1r,s1c, n,k,r,c)];
+                }
+
+                if (n < s2n &&
+                    k < s2k &&
+                    r < s2r &&
+                    c < s2c )
+                {
+                    v2 = s2[pack_idx(s2k,s2r,s2c, n,k,r,c)];
+                }
+
+                d[i] = v1*v2;
+            }
+        }
+
+        __global__ void _cuda_mult2_add_to(float* d, const float* s1, const float* s2, 
+                                   size_t dn, size_t dk, size_t dr, size_t dc,
+                                   size_t s1n, size_t s1k, size_t s1r, size_t s1c,
+                                   size_t s2n, size_t s2k, size_t s2r, size_t s2c)
+        {
+            for (auto i : grid_stride_range(0, dn*dk*dr*dc))
+            {
+                size_t n,k,r,c;
+                unpack_idx(i, dk,dr,dc, n,k,r,c);
+
+                float v1 = 0;
+                float v2 = 0;
+
+                if (n < s1n &&
+                    k < s1k &&
+                    r < s1r &&
+                    c < s1c )
+                {
+                    v1 = s1[pack_idx(s1k,s1r,s1c, n,k,r,c)];
+                }
+
+                if (n < s2n &&
+                    k < s2k &&
+                    r < s2r &&
+                    c < s2c )
+                {
+                    v2 = s2[pack_idx(s2k,s2r,s2c, n,k,r,c)];
+                }
+
+                d[i] += v1*v2;
+            }
+        }
+
+        void multiply_zero_padded (
+            bool add_to,
+            tensor& dest,
+            const tensor& src1,
+            const tensor& src2
+        )
+        {
+            if (dest.size() == 0)
+                return;
+
+            // Do the simple and fast version if everything has the same dimensions
+            if (have_same_dimensions(dest, src1) &&
+                have_same_dimensions(dest, src2))
+            {
+                if (add_to)
+                    launch_kernel(_cuda_mult1_add_to,max_jobs(dest.size()), dest.device(), src1.device(), src2.device(), dest.size());
+                else
+                    launch_kernel(_cuda_mult1,max_jobs(dest.size()), dest.device(), src1.device(), src2.device(), dest.size());
+            }
+            else
+            {
+                if (add_to)
+                {
+                    // Otherwise, do the more complex version with bounds checking.
+                    launch_kernel(_cuda_mult2_add_to,max_jobs(dest.size()),
+                                dest.device(), src1.device(), src2.device(), 
+                                dest.num_samples(), dest.k(), dest.nr(), dest.nc(),
+                                src1.num_samples(), src1.k(), src1.nr(), src1.nc(),
+                                src2.num_samples(), src2.k(), src2.nr(), src2.nc()
+                                );
+                }
+                else
+                {
+                    // Otherwise, do the more complex version with bounds checking.
+                    launch_kernel(_cuda_mult2,max_jobs(dest.size()),
+                                dest.device(), src1.device(), src2.device(), 
+                                dest.num_samples(), dest.k(), dest.nr(), dest.nc(),
+                                src1.num_samples(), src1.k(), src1.nr(), src1.nc(),
+                                src2.num_samples(), src2.k(), src2.nr(), src2.nc()
+                                );
+                }
+            }
+        }
+
+    // ------------------------------------------------------------------------------------
+
         __global__ void _cuda_add1(float* d, const float* s1, const float* s2, size_t n)
         {
             for (auto i : grid_stride_range(0, n))
@@ -1249,12 +1377,33 @@ namespace dlib
 
     // ----------------------------------------------------------------------------------------
 
+        __global__ void _cuda_copy_tensor_add_to (float* dest, size_t size,  const float* src,  size_t dest_stride, size_t src_stride, size_t block_size)
+        {
+            for(auto i : grid_stride_range(0, size)) 
+            {
+                size_t blk = i/block_size;
+                size_t j = i%block_size;
+                dest[blk*dest_stride + j] += src[blk*src_stride + j];
+            }
+        }
+
+        __global__ void _cuda_copy_tensor (float* dest, size_t size,  const float* src,  size_t dest_stride, size_t src_stride, size_t block_size)
+        {
+            for(auto i : grid_stride_range(0, size)) 
+            {
+                size_t blk = i/block_size;
+                size_t j = i%block_size;
+                dest[blk*dest_stride + j] = src[blk*src_stride + j];
+            }
+        }
+
         void copy_tensor(
-                tensor& dest,
-                size_t dest_k_offset,
-                const tensor& src,
-                size_t src_k_offset,
-                size_t count_k
+            bool add_to,
+            tensor& dest,
+            size_t dest_k_offset,
+            const tensor& src,
+            size_t src_k_offset,
+            size_t count_k
         )
         {
             const size_t dest_sample_size = static_cast<size_t>(dest.nc() * dest.nr() * dest.k());
@@ -1270,13 +1419,17 @@ namespace dlib
             float* dest_p = dest.device() + dest_k_offset * dest.nc() * dest.nr();
             const float* src_p = src.device() + src_k_offset * src.nc() * src.nr();;
 
-
-            for (long i = 0; i < src.num_samples(); ++i)
+            if (add_to)
             {
-                CHECK_CUDA(cudaMemcpy(dest_p, src_p, block_size * sizeof(float), cudaMemcpyDeviceToDevice));
-
-                dest_p += dest_sample_size;
-                src_p  += src_sample_size;
+                launch_kernel(_cuda_copy_tensor_add_to, max_jobs(dest.size()), 
+                              dest_p, block_size*dest.num_samples(),
+                              src_p, dest_sample_size, src_sample_size, block_size);
+            }
+            else
+            {
+                launch_kernel(_cuda_copy_tensor, max_jobs(dest.size()), 
+                              dest_p, block_size*dest.num_samples(),
+                              src_p, dest_sample_size, src_sample_size, block_size);
             }
         }
 
