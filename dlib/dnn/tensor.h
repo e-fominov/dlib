@@ -196,6 +196,7 @@ namespace dlib
     protected:
 
         friend class alias_tensor;
+        friend class alias_strided_tensor;
 
         virtual gpu_data& data() = 0;
         virtual const gpu_data& data() const = 0;
