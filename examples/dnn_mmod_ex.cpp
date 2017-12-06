@@ -159,7 +159,9 @@ int main(int argc, char** argv) try
     std::vector<std::vector<mmod_rect>> mini_batch_labels; 
     random_cropper cropper;
     cropper.set_chip_dims(200, 200);
-    cropper.set_min_object_size(0.2);
+    // Usually you want to give the cropper whatever min sizes you passed to the
+    // mmod_options constructor, which is what we do here.
+    cropper.set_min_object_size(40,40);
     dlib::rand rnd;
     // Run the trainer until the learning rate gets small.  This will probably take several
     // hours.
@@ -212,6 +214,10 @@ int main(int argc, char** argv) try
         cin.get();
     }
     return 0;
+
+    // Now that you finished this example, you should read dnn_mmod_train_find_cars_ex.cpp,
+    // which is a more advanced example.  It discusses many issues surrounding properly
+    // setting the MMOD parameters and creating a good training dataset.
 
 }
 catch(std::exception& e)

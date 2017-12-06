@@ -1466,6 +1466,14 @@ namespace dlib
 // ----------------------------------------------------------------------------------------
 
     unsigned long tabbed_display::
+    selected_tab (
+    ) const
+    {
+        auto_mutex M(m);
+        return selected_tab_;
+    }
+
+    unsigned long tabbed_display::
     number_of_tabs (
     ) const
     {
@@ -5628,9 +5636,6 @@ namespace dlib
 
         const unsigned long padding = style->get_padding(*mfont);
 
-        // find the delta between the cursor rect and the corner of the total rect 
-        point delta = point(cursor_rect.left(), cursor_rect.top()) - point(total_rect().left(), total_rect().top());
-
         // now scroll us so that we can see the current cursor 
         scroll_to_rect(centered_rect(cursor_rect, cursor_rect.width() + padding + 6, cursor_rect.height() + 1));
 
@@ -6011,7 +6016,7 @@ namespace dlib
         selected_rect(0),
         default_rect_color(255,0,0,255),
         parts_menu(w),
-        part_width(15), // width part circles are drawn on the screen
+        part_width(100), // "parts" circles are drawn 1.0/part_width size on the screen relative to the size of the bounding rectangle. 
         overlay_editing_enabled(true),
         highlight_timer(*this, &image_display::timer_event_unhighlight_rect),
         highlighted_rect(std::numeric_limits<unsigned long>::max()),
@@ -6277,10 +6282,14 @@ namespace dlib
         for (unsigned long i = 0; i < overlay_rects.size(); ++i)
         {
             const rectangle orect = get_rect_on_screen(i);
+            rgb_alpha_pixel color = overlay_rects[i].color;
+            // draw crossed out boxes slightly faded
+            if (overlay_rects[i].crossed_out)
+                color.alpha = 150;
 
             if (rect_is_selected && selected_rect == i)
             {
-                draw_rectangle(c, orect, invert_pixel(overlay_rects[i].color), area);
+                draw_rectangle(c, orect, invert_pixel(color), area);
             }
             else if (highlighted_rect < overlay_rects.size() && highlighted_rect == i)
             {
@@ -6308,14 +6317,14 @@ namespace dlib
             }
             else
             {
-                draw_rectangle(c, orect, overlay_rects[i].color, area);
+                draw_rectangle(c, orect, color, area);
             }
 
             if (overlay_rects[i].label.size() != 0)
             {
                 // make a rectangle that is at the spot we want to draw our string
                 rectangle r(orect.br_corner(),  c.br_corner());
-                mfont->draw_string(c, r, overlay_rects[i].label, overlay_rects[i].color, 0, 
+                mfont->draw_string(c, r, overlay_rects[i].label, color, 0, 
                                    std::string::npos, area);
             }
 
@@ -6327,22 +6336,23 @@ namespace dlib
                 if (itr->second == OBJECT_PART_NOT_PRESENT)
                     continue;
 
-                rectangle temp = centered_rect(get_rect_on_screen(centered_rect(itr->second,1,1)), part_width, part_width);
+                const long part_size = (long)std::max(1.0,std::round(std::sqrt(orect.area())/part_width));
+                rectangle temp = centered_rect(get_rect_on_screen(centered_rect(itr->second,1,1)), part_size, part_size);
 
                 if (rect_is_selected && selected_rect == i && 
                     selected_part_name.size() != 0 && selected_part_name == itr->first)
                 {
-                    draw_circle(c, center(temp), temp.width()/2, invert_pixel(overlay_rects[i].color), area);
+                    draw_circle(c, center(temp), temp.width(), invert_pixel(color), area);
                 }
                 else
                 {
-                    draw_circle(c, center(temp), temp.width()/2, overlay_rects[i].color, area);
+                    draw_circle(c, center(temp), temp.width(), color, area);
                 }
 
                 // make a rectangle that is at the spot we want to draw our string
                 rectangle r((temp.br_corner() + temp.bl_corner())/2,  
                             c.br_corner());
-                mfont->draw_string(c, r, itr->first, overlay_rects[i].color, 0, 
+                mfont->draw_string(c, r, itr->first, color, 0, 
                                    std::string::npos, area);
             }
 
@@ -6350,13 +6360,13 @@ namespace dlib
             {
                 if (rect_is_selected && selected_rect == i)
                 {
-                    draw_line(c, orect.tl_corner(), orect.br_corner(),invert_pixel(overlay_rects[i].color), area);
-                    draw_line(c, orect.bl_corner(), orect.tr_corner(),invert_pixel(overlay_rects[i].color), area);
+                    draw_line(c, orect.tl_corner(), orect.br_corner(),invert_pixel(color), area);
+                    draw_line(c, orect.bl_corner(), orect.tr_corner(),invert_pixel(color), area);
                 }
                 else
                 {
-                    draw_line(c, orect.tl_corner(), orect.br_corner(),overlay_rects[i].color, area);
-                    draw_line(c, orect.bl_corner(), orect.tr_corner(),overlay_rects[i].color, area);
+                    draw_line(c, orect.tl_corner(), orect.br_corner(),color, area);
+                    draw_line(c, orect.bl_corner(), orect.tr_corner(),color, area);
                 }
             }
         }
@@ -6436,7 +6446,8 @@ namespace dlib
                 event_handler();
         }
 
-        if (is_printable && !hidden && enabled && rect_is_selected && (key == 'i'))
+        if (!hidden && enabled && rect_is_selected && 
+            ((is_printable && key == 'i') || (!is_printable && key==base_window::KEY_END)))
         {
             overlay_rects[selected_rect].crossed_out = !overlay_rects[selected_rect].crossed_out;
             parent.invalidate_rectangle(rect);
@@ -6546,11 +6557,12 @@ namespace dlib
                     if (itr->second == OBJECT_PART_NOT_PRESENT)
                         continue;
 
-                    rectangle temp = centered_rect(get_rect_on_screen(centered_rect(itr->second,1,1)), part_width, part_width);
+                    const long part_size = (long)std::max(1.0,std::round(std::sqrt(orect.area())/part_width));
+                    rectangle temp = centered_rect(get_rect_on_screen(centered_rect(itr->second,1,1)), part_size, part_size);
                     point c = center(temp);
 
                     // distance from edge of part circle
-                    const long dist = static_cast<long>(std::abs(length(c - point(x,y)) + 0.5 - temp.width()/2));
+                    const long dist = static_cast<long>(std::abs(length(c - point(x,y)) + 0.5 - temp.width()));
                     if (dist < best_dist)
                     {
                         best_idx = i;
@@ -6693,11 +6705,12 @@ namespace dlib
                     if (itr->second == OBJECT_PART_NOT_PRESENT)
                         continue;
 
-                    rectangle temp = centered_rect(get_rect_on_screen(centered_rect(itr->second,1,1)), part_width, part_width);
+                    const long part_size = (long)std::max(1.0,std::round(std::sqrt(orect.area())/part_width));
+                    rectangle temp = centered_rect(get_rect_on_screen(centered_rect(itr->second,1,1)), part_size, part_size);
                     point c = center(temp);
 
                     // distance from edge of part circle
-                    const long dist = static_cast<long>(std::abs(length(c - point(x,y)) + 0.5 - temp.width()/2));
+                    const long dist = static_cast<long>(std::abs(length(c - point(x,y)) + 0.5 - temp.width()));
                     if (dist < best_dist)
                     {
                         best_idx = i;

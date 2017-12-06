@@ -19,27 +19,6 @@ using namespace dlib;
 
 extern const char* VERSION;
 
-rgb_alpha_pixel string_to_color(
-    const std::string& str
-)
-{
-    if (str.size() == 0)
-    {
-        return rgb_alpha_pixel(255,0,0,255);
-    }
-    else
-    {
-        // make up a random color based on the string label.
-        hsi_pixel pix;
-        pix.h = static_cast<unsigned char>(dlib::hash(str)&0xFF); 
-        pix.s = 255;
-        pix.i = 150;
-        rgb_alpha_pixel result;
-        assign_pixel(result, pix);
-        return result;
-    }
-}
-
 // ----------------------------------------------------------------------------------------
 
 metadata_editor::
@@ -78,6 +57,7 @@ metadata_editor(
     overlay_label_name.set_text("Next Label: ");
     overlay_label.set_width(200);
 
+    display.set_image_clicked_handler(*this, &metadata_editor::on_image_clicked);
     display.set_overlay_rects_changed_handler(*this, &metadata_editor::on_overlay_rects_changed);
     display.set_overlay_rect_selected_handler(*this, &metadata_editor::on_overlay_rect_selected);
     overlay_label.set_text_modified_handler(*this, &metadata_editor::on_overlay_label_changed);
@@ -374,8 +354,19 @@ on_keydown (
             select_image(image_pos);
         }
 
-
-        return;
+        // Make 'w' and 's' act like KEY_UP and KEY_DOWN
+        if ((key == 'w' || key == 'W') && !overlay_label.has_input_focus())
+        {
+            key = base_window::KEY_UP;
+        }
+        else if ((key == 's' || key == 'S') && !overlay_label.has_input_focus())
+        {
+            key = base_window::KEY_DOWN;
+        }
+        else
+        {
+            return;
+        }
     }
 
     if (key == base_window::KEY_UP)
@@ -479,7 +470,8 @@ on_lb_images_clicked(
 // ----------------------------------------------------------------------------------------
 
 std::vector<dlib::image_display::overlay_rect> get_overlays (
-    const dlib::image_dataset_metadata::image& data
+    const dlib::image_dataset_metadata::image& data,
+    color_mapper& string_to_color 
 )
 {
     std::vector<dlib::image_display::overlay_rect> temp(data.boxes.size());
@@ -521,7 +513,7 @@ load_image(
     if (display_equialized_image)
         equalize_histogram(img);
     display.set_image(img);
-    display.add_overlay(get_overlays(metadata.images[idx]));
+    display.add_overlay(get_overlays(metadata.images[idx], string_to_color));
 }
 
 // ----------------------------------------------------------------------------------------
@@ -569,7 +561,7 @@ load_image_and_set_size(
     if (display_equialized_image)
         equalize_histogram(img);
     display.set_image(img);
-    display.add_overlay(get_overlays(metadata.images[idx]));
+    display.add_overlay(get_overlays(metadata.images[idx], string_to_color));
 }
 
 // ----------------------------------------------------------------------------------------
@@ -601,11 +593,20 @@ on_overlay_rects_changed(
 // ----------------------------------------------------------------------------------------
 
 void metadata_editor::
+on_image_clicked(
+    const point& /*p*/, bool /*is_double_click*/, unsigned long /*btn*/
+)
+{
+    display.set_default_overlay_rect_color(string_to_color(trim(overlay_label.text())));
+}
+
+// ----------------------------------------------------------------------------------------
+
+void metadata_editor::
 on_overlay_label_changed(
 )
 {
     display.set_default_overlay_rect_label(trim(overlay_label.text()));
-    display.set_default_overlay_rect_color(string_to_color(trim(overlay_label.text())));
 }
 
 // ----------------------------------------------------------------------------------------
@@ -635,7 +636,7 @@ display_about(
                         "field at the top of the application.  You can quickly edit the contents of the Next Label field "
                         "by hitting the tab key. Double clicking "
                         "a rectangle selects it and the delete key removes it.  You can also mark "
-                        "a rectangle as ignored by hitting the i key when it is selected.  Ignored "
+                        "a rectangle as ignored by hitting the i or END keys when it is selected.  Ignored "
                         "rectangles are visually displayed with an X through them.  You can remove an image "
                         "entirely by selecting it in the list on the left and pressing alt+d."
                         ,0,0) << endl << endl;
@@ -645,6 +646,9 @@ display_about(
                         "Note that you must define the allowable part labels by giving --parts on the "
                         "command line.  An example would be '--parts \"leye reye nose mouth\"'."
                         ,0,0) << endl << endl;
+
+    sout << wrap_string("Press the down or s key to select the next image in the list and the up or w "
+                        "key to select the previous one.",0,0) << endl << endl;
 
     sout << wrap_string("Additionally, you can hold ctrl and then scroll the mouse wheel to zoom.  A normal left click "
                         "and drag allows you to navigate around the image.  Holding ctrl and "

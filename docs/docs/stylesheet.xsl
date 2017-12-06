@@ -42,7 +42,7 @@
 
    <xsl:variable name="lcletters">abcdefghijklmnopqrstuvwxyz </xsl:variable>
    <xsl:variable name="ucletters">ABCDEFGHIJKLMNOPQRSTUVWXYZ </xsl:variable>
-   <xsl:variable name="badletters">?()&lt;&gt; /\&amp;~!@#$%^*_+=-[]{}</xsl:variable>
+   <xsl:variable name="badletters">'?()&lt;&gt; /\&amp;~!@#$%^*_+=-[]{}</xsl:variable>
    
    <!-- ************************************************************************* -->
 
@@ -656,6 +656,11 @@
       <br/>
          <xsl:apply-templates/>
    </xsl:template>   
+
+   <xsl:template match="youtube">
+      <iframe width="900" height="506" src="{@src}" frameborder="0" allowfullscreen='1'></iframe>
+   </xsl:template>   
+
    <xsl:template match="a">
       <a href="{@href}">
          <xsl:apply-templates/>
